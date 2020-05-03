@@ -9,10 +9,11 @@ services:
 
   qbittorrent:
     container_name: qbittorrent
-    image: markusmcnugen/qbittorrentvpn
+    image: markusmcnugen/qbittorrentvpn:latest
     restart: always
     networks:
-      - traefik_proxy
+      traefik_proxy:
+        ipv4_address: 192.168.50.247
     cap_add:
       - NET_ADMIN
     devices:
@@ -22,9 +23,9 @@ services:
 #      - "8999:8999"
 #      - "8999:8999/udp"
     volumes:
+      - $USERDIR/docker/qbittorrent:/config
       - $USERDIR/dwnloads:/downloads
       - /mnt/storage:/mnt/storage
-      - $USERDIR/docker/qbittorrent:/config
     environment:
       - PUID=$PUID
       - PGID=$PGID
@@ -37,22 +38,18 @@ services:
       ## Add these to your .ovpn file:
 #      - VPN_OPTIONS=--inactive 3600 --ping 10 --ping-exit 60 --auth-nocache
     labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik_proxy
-      ## HTTPS entrypoint
-      - traefik.http.routers.qbittorrent.entrypoints=https
-      - traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.$DOMAINNAME`)
-      - traefik.http.routers.qbittorrent.tls.certresolver=cloudflare
-      ## Middlewares - Unique
-      - traefik.http.routers.qbittorrent.middlewares=qbittorrent-headers
-      - traefik.http.middlewares.qbittorrent-headers.headers.SSLHost=qbittorrent.$DOMAINNAME
-      ## Middlewares - Chain
-      - traefik.http.routers.qbittorrent.middlewares=vnc-chain-nocookie@file
-      ## Services
-      - traefik.http.routers.qbittorrent.service=qbittorrent
-      - traefik.http.services.qbittorrent.loadbalancer.server.port=8080
+      - "traefik.enable=true"
+      ## HTTP Routers
+      - "traefik.http.routers.qbittorrent-rtr.entrypoints=https"
+      - "traefik.http.routers.qbittorrent-rtr.rule=Host(`qbittorrent.$DOMAINNAME`)"
+      - "traefik.http.routers.qbittorrent-rtr.tls=true"
+      - "traefik.http.routers.qbittorrent-rtr.tls.certresolver=dns-cloudflare"
+      ## Middlewares
+      - "traefik.http.routers.qbittorrent-rtr.middlewares=secure-chain@file"
+      ## HTTP Services
+      - "traefik.http.routers.qbittorrent-rtr.service=qbittorrent-svc"
+      - "traefik.http.services.qbittorrent-svc.loadbalancer.server.port=8080"
 
 networks:
   traefik_proxy:
-    external:
-      name: traefik_proxy
+    external: true

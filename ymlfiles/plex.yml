@@ -2,16 +2,16 @@ version: "3.7"
 services:
 
 ## Plex Media Server
-   #Navigate to (127.0.0.1:32400/web) to reset your server
   plex:
     container_name: plex
-    image: linuxserver/plex
+    image: linuxserver/plex:1.18.7.2457-77cb9455c-ls80
     restart: always
     devices:
       - /dev/dri:/dev/dri
     privileged: true
     networks:
-      - traefik_proxy
+      traefik_proxy:
+        ipv4_address: 192.168.50.200 # Set a static IP for tautulli to connect to
     ports:
       - "32400:32400"
       - "32400:32400/udp"
@@ -20,32 +20,51 @@ services:
       - "5353:5353/udp"
       - "1900:1900/udp"
     volumes:
+      - $USERDIR/docker/plex:/config
       - /mnt/storage/movies:/MOVIES:ro
       - /mnt/storage/tv:/TV:ro
-      - /mnt/storage/concerts:/CONCERTS:ro
-      - $USERDIR/docker/plex:/config
+      - /mnt/storage/music:/MUSIC:ro
     environment:
       - PUID=$PUID
       - PGID=$PGID
       - TZ=$TZ
       - VERSION=docker
+#      - PLEX_CLAIM=claim-xxxxxxxx
     labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik_proxy
-      ## HTTPS entrypoint
-      - traefik.http.routers.plex.entrypoints=https
-      - traefik.http.routers.plex.rule=Host(`plex.$DOMAINNAME`)
-      - traefik.http.routers.plex.tls.certresolver=cloudflare
-      ## Middlewares - Unique
-      - traefik.http.routers.plex.middlewares=plex-headers
-      - traefik.http.middlewares.plex-headers.headers.SSLHost=plex.$DOMAINNAME
-      ## Middlewares - Chain
-      - traefik.http.routers.plex.middlewares=test-headers@file
-      ## Services
-      - traefik.http.routers.plex.service=plex
-      - traefik.http.services.plex.loadbalancer.server.port=32400
+      - "traefik.enable=true"
+      ## HTTP Routers
+      - "traefik.http.routers.plex-rtr.entrypoints=https"
+      - "traefik.http.routers.plex-rtr.rule=Host(`plex.$DOMAINNAME`)"
+      - "traefik.http.routers.plex-rtr.tls=true"
+      - "traefik.http.routers.plex-rtr.tls.certresolver=dns-cloudflare"
+      ## Middlewares
+      - "traefik.http.routers.plex-rtr.middlewares=plex-headers"
+      - "traefik.http.middlewares.plex-headers.headers.accesscontrolallowmethods=GET, OPTIONS, PUT"
+      - "traefik.http.middlewares.plex-headers.headers.accesscontrolalloworiginlist=https://$DOMAINNAME"
+      - "traefik.http.middlewares.plex-headers.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.plex-headers.headers.addvaryheader=true"
+#      - "traefik.http.middlewares.plex-headers.headers.allowedhosts=plex.$DOMAINNAME"
+      - "traefik.http.middlewares.plex-headers.headers.hostsproxyheaders=X-Forwarded-Host"
+      - "traefik.http.middlewares.plex-headers.headers.sslredirect=true"
+#      - "traefik.http.middlewares.plex-headers.headers.sslhost=plex.$DOMAINNAME"
+#      - "traefik.http.middlewares.plex-headers.headers.sslforcehost=true"
+#      - "traefik.http.middlewares.plex-headers.headers.sslproxyheaders.X-Forwarded-Proto=https"
+      - "traefik.http.middlewares.plex-headers.headers.stsseconds=63072000"
+      - "traefik.http.middlewares.plex-headers.headers.stsincludesubdomains=true"
+      - "traefik.http.middlewares.plex-headers.headers.stspreload=true"
+      - "traefik.http.middlewares.plex-headers.headers.forcestsheader=true"
+#      - "traefik.http.middlewares.plex-headers.headers.framedeny=true"
+      - "traefik.http.middlewares.plex-headers.headers.customframeoptionsvalue=allow-from https:$DOMAINNAME" # This option overrides FrameDeny
+      - "traefik.http.middlewares.plex-headers.headers.contenttypenosniff=true"
+      - "traefik.http.middlewares.plex-headers.headers.browserxssfilter=true"
+#      - "traefik.http.middlewares.plex-headers.headers.contentsecuritypolicy=frame-ancestors 'none'; object-src 'none'; base-uri 'none';"
+      - "traefik.http.middlewares.plex-headers.headers.referrerpolicy=same-origin"
+      - "traefik.http.middlewares.plex-headers.headers.featurepolicy=camera 'none'; geolocation 'none'; microphone 'none'; payment 'none'; usb 'none'; vr 'none';"
+      - "traefik.http.middlewares.plex-headers.headers.customresponseheaders.X-Robots-Tag=none,noarchive,nosnippet,notranslate,noimageindex,"
+      ## HTTP Services
+      - "traefik.http.routers.plex-rtr.service=plex-svc"
+      - "traefik.http.services.plex-svc.loadbalancer.server.port=32400"
 
 networks:
   traefik_proxy:
-    external:
-      name: traefik_proxy
+    external: true

@@ -4,10 +4,11 @@ services:
 ## Tautulli – Monitoring Plex Usage
   tautulli:
     container_name: tautulli
-    image: linuxserver/tautulli
-    restart: always
+    image: linuxserver/tautulli:latest
+    restart: unless-stopped
     networks:
-      - traefik_proxy
+      traefik_proxy:
+        ipv4_address: 192.168.50.243
 #    ports:
 #      - "8181:8181"
     volumes:
@@ -18,22 +19,18 @@ services:
       - PGID=$PGID
       - TZ=$TZ
     labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik_proxy
-      ## HTTPS entrypoint
-      - traefik.http.routers.tautulli.entrypoints=https
-      - traefik.http.routers.tautulli.rule=Host(`tautulli.$DOMAINNAME`)
-      - traefik.http.routers.tautulli.tls.certresolver=cloudflare
-      ## Middlewares - Unique
-      - traefik.http.routers.tautulli.middlewares=tautulli-headers
-      - traefik.http.middlewares.tautulli-headers.headers.SSLHost=tautulli.$DOMAINNAME
-      ## Middlewares - Chain
-      - traefik.http.routers.tautulli.middlewares=secure-chain@file
-      ## Services
-      - traefik.http.routers.tautulli.service=tautulli
-      - traefik.http.services.tautulli.loadbalancer.server.port=8181
+      - "traefik.enable=true"
+      ## HTTP Routers
+      - "traefik.http.routers.tautulli-rtr.entrypoints=https"
+      - "traefik.http.routers.tautulli-rtr.rule=Host(`tautulli.$DOMAINNAME`)"
+      - "traefik.http.routers.tautulli-rtr.tls=true"
+      - "traefik.http.routers.tautulli-rtr.tls.certresolver=dns-cloudflare"
+      ## Middlewares
+      - "traefik.http.routers.tautulli-rtr.middlewares=secure-headers@file,rate-limit@file,basic-auth@file"
+      ## HTTP Services
+      - "traefik.http.routers.tautulli-rtr.service=tautulli-svc"
+      - "traefik.http.services.tautulli-svc.loadbalancer.server.port=8181"
 
 networks:
   traefik_proxy:
-    external:
-      name: traefik_proxy
+    external: true

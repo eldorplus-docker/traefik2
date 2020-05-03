@@ -4,7 +4,7 @@ services:
 ## Portainer - WebUI for Containers
   portainer:
     container_name: portainer
-    image: portainer/portainer
+    image: portainer/portainer:latest
     restart: always
     command: -H unix:///var/run/docker.sock
     networks:
@@ -12,30 +12,26 @@ services:
 #    ports:
 #      - "9000:9000"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - portainer_data:/data # Change to local directory if you want to save/transfer config locally
     environment:
       - TZ=$TZ
     labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik_proxy
-      ## HTTPS entrypoint
-      - traefik.http.routers.portainer.entrypoints=https
-      - traefik.http.routers.portainer.rule=Host(`portainer.$DOMAINNAME`)
-      - traefik.http.routers.portainer.tls.certresolver=cloudflare
-      ## Middlewares - Unique
-      - traefik.http.routers.portainer.middlewares=portainer-headers
-      - traefik.http.middlewares.portainer-headers.headers.SSLHost=portainer.$DOMAINNAME
-      ## Middlewares - Chain
-      - traefik.http.routers.portainer.middlewares=secure-chain@file
-      ## Services
-      - traefik.http.routers.portainer.service=portainer
-      - traefik.http.services.portainer.loadbalancer.server.port=9000
+      - "traefik.enable=true"
+      ## HTTP Routers
+      - "traefik.http.routers.portainer-rtr.entrypoints=https"
+      - "traefik.http.routers.portainer-rtr.rule=Host(`portainer.$DOMAINNAME`)"
+      - "traefik.http.routers.portainer-rtr.tls=true"
+      - "traefik.http.routers.portainer-rtr.tls.certresolver=dns-cloudflare"
+      ## Middlewares
+      - "traefik.http.routers.portainer-rtr.middlewares=secure-chain@file"
+      ## HTTP Services
+      - "traefik.http.routers.portainer-rtr.service=portainer-svc"
+      - "traefik.http.services.portainer-svc.loadbalancer.server.port=9000"
 
 volumes:
   portainer_data:
 
 networks:
   traefik_proxy:
-    external:
-      name: traefik_proxy
+    external: true

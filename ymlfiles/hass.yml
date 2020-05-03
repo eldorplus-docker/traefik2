@@ -2,9 +2,13 @@ version: "3.7"
 services:
 
 ## Home Assistant - Home Automation Hub
+
+  ## Check config with:
+    # docker exec -it hass hass --script check_config -c /config
+
   hass:
     container_name: hass
-    image: homeassistant/home-assistant
+    image: homeassistant/home-assistant:latest
     restart: always
     privileged: true
     networks:
@@ -16,22 +20,18 @@ services:
     environment:
       - TZ=$TZ
     labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik_proxy
-      ## HTTPS entrypoint
-      - traefik.http.routers.hass.entrypoints=https
-      - traefik.http.routers.hass.rule=Host(`hass.$DOMAINNAME`)
-      - traefik.http.routers.hass.tls.certresolver=cloudflare
-      ## Middlewares - Unique
-      - traefik.http.routers.hass.middlewares=hass-headers
-      - traefik.http.middlewares.hass-headers.headers.SSLHost=hass.$DOMAINNAME
-      ## Middlewares - Chain
-      - traefik.http.routers.hass.middlewares=noauth-chain@file
-      ## Services
-      - traefik.http.routers.hass.service=hass
-      - traefik.http.services.hass.loadbalancer.server.port=8123
+      - "traefik.enable=true"
+      ## HTTP Routers
+      - "traefik.http.routers.hass-rtr.entrypoints=https"
+      - "traefik.http.routers.hass-rtr.rule=Host(`hass.$DOMAINNAME`)"
+      - "traefik.http.routers.hass-rtr.tls=true"
+      - "traefik.http.routers.hass-rtr.tls.certresolver=dns-cloudflare"
+      ## Middlewares
+      - "traefik.http.routers.hass-rtr.middlewares=secure-headers@file"
+      ## HTTP Services
+      - "traefik.http.routers.hass-rtr.service=hass-svc"
+      - "traefik.http.services.hass-svc.loadbalancer.server.port=8123"
 
 networks:
   traefik_proxy:
-    external:
-      name: traefik_proxy
+    external: true

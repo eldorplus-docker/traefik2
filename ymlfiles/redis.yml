@@ -43,7 +43,7 @@ services:
 
   redis:
     container_name: redis
-    image: redis
+    image: redis:latest
     restart: always
     entrypoint: redis-server --appendonly yes
     networks:
@@ -54,16 +54,8 @@ services:
       net.core.somaxconn: '65535'
     volumes:
       - $USERDIR/docker/redis/data:/data
+      - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik_proxy
-      ## TCP
-      - traefik.tcp.routers.redis.entrypoints=redis-port
-      - traefik.tcp.routers.redis.tls=true
-      - traefik.tcp.routers.redis.rule=HostSNI(`*`)
-      - traefik.tcp.routers.redis.service=redis
-      - traefik.tcp.services.redis.loadbalancer.server.port=6379
 
 ## Redis Commander - Redis Management Tool
   rediscommander:
@@ -79,22 +71,18 @@ services:
     environment:
       - REDIS_HOST=redis
     labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik_proxy
-      ## HTTPS entrypoint
-      - traefik.http.routers.rediscommander.entrypoints=https
-      - traefik.http.routers.rediscommander.rule=Host(`rediscommander.$DOMAINNAME`)
-      - traefik.http.routers.rediscommander.tls.certresolver=cloudflare
-      ## Middlewares - Unique
-      - traefik.http.routers.rediscommander.middlewares=rediscommander-headers
-      - traefik.http.middlewares.rediscommander-headers.headers.SSLHost=rediscommander.$DOMAINNAME
-      ## Middlewares - Chain
-      - traefik.http.routers.rediscommander.middlewares=secure-chain@file
-      ## Services
-      - traefik.http.routers.rediscommander.service=rediscommander
-      - traefik.http.services.rediscommander.loadbalancer.server.port=8081
+      - "traefik.enable=true"
+      ## HTTP Routers
+      - "traefik.http.routers.rediscommander-rtr.entrypoints=https"
+      - "traefik.http.routers.rediscommander-rtr.rule=Host(`rediscommander.$DOMAINNAME`)"
+      - "traefik.http.routers.rediscommander-rtr.tls=true"
+      - "traefik.http.routers.rediscommander-rtr.tls.certresolver=dns-cloudflare"
+      ## Middlewares
+      - "traefik.http.routers.rediscommander-rtr.middlewares=secure-chain@file"
+      ## HTTP Services
+      - "traefik.http.routers.rediscommander-rtr.service=rediscommander-svc"
+      - "traefik.http.services.rediscommander-svc.loadbalancer.server.port=8081"
 
 networks:
   traefik_proxy:
-    external:
-      name: traefik_proxy
+    external: true

@@ -6,15 +6,15 @@ services:
 ## Rsync Server
   rsync:
     container_name: rsync
-    image: axiom/rsync-server
+    image: axiom/rsync-server:latest
     restart: always
     networks:
       - traefik_proxy
-#    ports:
-#      - "873:873"
+    ports:
+      - "873:873"
 #      - "22:22"
     volumes:
-      - $USERDIR/.ssh/authorized_keys:/root/.ssh/authorized_keys
+#      - $USERDIR/.ssh/authorized_keys:/root/.ssh/authorized_keys:ro
       - /mnt/storage:/data:ro
     environment:
       - USERNAME=$USERNAME
@@ -24,5 +24,4 @@ services:
 
 networks:
   traefik_proxy:
-    external:
-      name: traefik_proxy
+    external: true

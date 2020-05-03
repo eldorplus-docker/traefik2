@@ -1,67 +1,64 @@
 version: "3.7"
 services:
 
-#https://docs.gitea.io/en-us/fail2ban-setup/
+## Gitea - Selfhosted Git Service
+  #https://docs.gitea.io/en-us/fail2ban-setup/
 
-  ## Suggested procedure to create your Gitea Database:
+  ## Suggested procedure to create your database:
   ## Change the <password>
     # docker exec -it mariadb mysql -uroot -p$MYSQL_ROOT_PASSWORD
-    # CREATE DATABASE keycloak CHARACTER SET = utf8 COLLATE = utf8_unicode_ci;
-    # GRANT ALL PRIVILEGES ON keycloak.* TO 'keycloak'@'keycloak.traefik_proxy' IDENTIFIED BY '<password>';
+    # CREATE DATABASE gitea CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+    # GRANT ALL PRIVILEGES ON gitea.* TO 'gitea'@'gitea.mariadb' IDENTIFIED BY '<password>';
     # FLUSH PRIVILEGES;
     # exit
 
-## Gitea - Selfhosted Git Service
-  # To generate SECRET_KEY:
-  # docker exec -it gitea gitea generate secret SECRET_KEY
+  ## Disable self registration during install, or with the DISABLE_REGISTRATION flag in gitea>conf>app.ini
+
   gitea:
     container_name: gitea
-    image: gitea/gitea
+    image: gitea/gitea:latest
     restart: always
     networks:
       - traefik_proxy
+      - mariadb
 #    ports:
 #      - "3000:3000"
 #      - "127.0.0.1:2222:22"
     volumes:
-      - ${USERDIR}/docker/gitea:/data
-#      /home/git/gitea/log/docker/gitea.log
+      - $USERDIR/docker/gitea:/data
+      - /var/log/docker/gitea.log:/var/log/docker/gitea.log # make sure to touch this file with user permissions before starting, and change the log path on install
     environment:
       - USER_UID=1000
       - USER_GID=1000
-      - SSH_PORT=2222
+#      - SSH_PORT=2222
       - DB_TYPE=mysql
       - DB_HOST=mariadb:3306
       - DB_NAME=gitea
       - DB_USER=gitea
-      - DB_PASSWD=$MYSQL_ROOT_PASSWORD
+      - DB_PASSWD=$MYSQL_PASSWORD
       - RUN_MODE=prod
-#      - INSTALL_LOCK=true # Disallow access to the install page. Enable after first sign in
-#      - SECRET_KEY=”” # Global secret key. This should be changed. If this has a value and INSTALL_LOCK is empty, INSTALL_LOCK will automatically set to true.
-#      - DISABLE_REGISTRATION=false # Disable registration, after which only admin can create accounts for users.
+      - ROOT_URL=https://gitea.$DOMAINNAME
     labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik_proxy
-      ## HTTPS entrypoint
-      - traefik.http.routers.gitea.entrypoints=https
-      - traefik.http.routers.gitea.rule=Host(`gitea.$DOMAINNAME`)
-      - traefik.http.routers.gitea.tls.certresolver=cloudflare
-      ## Middlewares - Unique
-      - traefik.http.routers.gitea.middlewares=gitea-headers
-      - traefik.http.middlewares.gitea-headers.headers.SSLHost=gitea.$DOMAINNAME
-      ## Middlewares - Chain
-      - traefik.http.routers.gitea.middlewares=noauth-chain-nocookie@file
-      ## Services
-      - traefik.http.routers.gitea.service=gitea-svc
-      - traefik.http.services.gitea-svc.loadbalancer.server.port=3000
+      - "traefik.enable=true"
+      ## HTTP Routers
+      - "traefik.http.routers.gitea-rtr.entrypoints=https"
+      - "traefik.http.routers.gitea-rtr.rule=Host(`gitea.$DOMAINNAME`)"
+      - "traefik.http.routers.gitea-rtr.tls=true"
+      - "traefik.http.routers.gitea-rtr.tls.certresolver=dns-cloudflare"
+      ## Middlewares
+      - "traefik.http.routers.gitea-rtr.middlewares=secure-chain@file"
+      ## HTTP Services
+      - "traefik.http.routers.gitea-rtr.service=gitea-svc"
+      - "traefik.http.services.gitea-svc.loadbalancer.server.port=3000"
       ## TCP
-      - traefik.tcp.routers.gitea-tcp.entrypoints=ssh
-      - traefik.tcp.routers.gitea-tcp.tls=true
-      - traefik.tcp.routers.gitea-tcp.rule=HostSNI(`*`)
-      - traefik.tcp.routers.gitea-tcp.service=gitea-tcp-svc
-      - traefik.tcp.services.gitea-tcp-svc.loadbalancer.server.port=22
+#      - "traefik.tcp.routers.gitea-tcp.entrypoints=ssh"
+#      - "traefik.tcp.routers.gitea-tcp.tls=true"
+#      - "traefik.tcp.routers.gitea-tcp.rule=HostSNI(`*`)"
+#      - "traefik.tcp.routers.gitea-tcp.service=gitea-tcp-svc"
+#      - "traefik.tcp.services.gitea-tcp-svc.loadbalancer.server.port=22"
 
 networks:
   traefik_proxy:
-    external:
-      name: traefik_proxy
+    external: true
+  mariadb:
+    external: true

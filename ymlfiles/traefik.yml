@@ -1,5 +1,5 @@
 # Need to start the traefik network before running:
-  # docker network create traefik_proxy
+  # docker network create --gateway 192.168.50.1 --subnet 192.168.50.0/24 traefik_proxy
 # Trail logs using (docker logs -f traefik). Change "traefik" to name of container you want to trail
 
 version: "3.7"
@@ -8,12 +8,52 @@ services:
 ## Traefik - Reverse Proxy
   traefik:
     container_name: traefik
-    image: traefik:v2.0.0-rc4
+    image: traefik:chevrotin # the chevrotin tag refers to v2.2.x
     restart: always
+    command: # CLI arguments
+      - --global.checkNewVersion=true
+      - --global.sendAnonymousUsage=true
+      - --entryPoints.http.address=:80
+      - --entrypoints.http.http.redirections.entryPoint.to=https # entrypoints.<your_entrypoint_name>.http.redirections...
+      - --entryPoints.https.address=:443
+      # Allow these IPs to set the X-Forwarded-* headers - Cloudflare IPs: https://www.cloudflare.com/ips/
+      - --entrypoints.https.forwardedHeaders.trustedIPs=173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,141.101.64.0/18,108.162.192.0/18,190.93.240.0/20,188.114.96.0/20,197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/12,172.64.0.0/13,131.0.72.0/22
+#      - --entrypoints.https.http.middlewares=secure-chain@file
+      - --entrypoints.https.http.tls.certresolver=dns-cloudflare
+      - --entrypoints.https.http.tls.domains[0].main=$DOMAINNAME
+      - --entrypoints.https.http.tls.domains[0].sans=*.$DOMAINNAME
+      - --entrypoints.https.http.tls.domains[1].main=$DOMAIN # Pulls main cert for second domain
+      - --entrypoints.https.http.tls.domains[1].sans=*.$DOMAIN # Pulls wildcard cert for second domain
+#      - --entrypoints.https.http.tls.options=tls-opts@file
+      - --entryPoints.traefik.address=:8080
+      - --api=true
+#      - --api.insecure=true
+#      - --serversTransport.insecureSkipVerify=true
+      - --log=true
+      - --log.level=INFO # (Default: error) DEBUG, INFO, WARN, ERROR, FATAL, PANIC
+      - --accessLog=true
+      - --accessLog.filePath=/traefik.log
+      - --accessLog.bufferingSize=100 # Configuring a buffer of 100 lines
+      - --accessLog.filters.statusCodes=400-499
+      - --providers.docker=true
+      - --providers.docker.endpoint=unix:///var/run/docker.sock
+      - --providers.docker.defaultrule=Host(`{{ index .Labels "com.docker.compose.service" }}.$DOMAINNAME`)
+      - --providers.docker.exposedByDefault=false
+      - --providers.docker.network=traefik_proxy
+      - --providers.docker.swarmMode=false
+      - --providers.file.directory=/rules # Load dynamic configuration from one or more .toml or .yml files in a directory.
+#      - --providers.file.filename=/path/to/file # Load dynamic configuration from a file.
+      - --providers.file.watch=true # Only works on top level files in the rules folder
+#      - --certificatesResolvers.dns-cloudflare.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory # LetsEncrypt Staging Server - uncomment when testing
+      - --certificatesResolvers.dns-cloudflare.acme.email=$CLOUDFLARE_EMAIL
+      - --certificatesResolvers.dns-cloudflare.acme.storage=/acme.json
+      - --certificatesResolvers.dns-cloudflare.acme.dnsChallenge.provider=cloudflare
     networks:
-      - traefik_proxy
+      traefik_proxy:
+        ipv4_address: 192.168.50.254
+    security_opt:
+      - no-new-privileges:true
     ports:
-      # https://www.reddit.com/r/docker/comments/c1wrep/traefik_reverse_proxy_question_docker_overlay/
       - target: 80
         published: 80
         protocol: tcp
@@ -22,130 +62,57 @@ services:
         published: 443
         protocol: tcp
         mode: host
-#      - "8080:8080"
     volumes:
-      - $TRAEFIK2DIR/traefik:/etc/traefik
+      - $TRAEFIK2DIR/traefik/rules:/rules # file provider directory
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - $TRAEFIK2DIR/traefik/acme/acme.json:/acme.json # cert location - you must touch this file and change permissions to 600
+      - /var/log/docker/traefik.log:/traefik.log # for fail2ban - make sure to touch file before starting container
     environment:
       - CF_API_EMAIL=$CLOUDFLARE_EMAIL
       - CF_API_KEY=$CLOUDFLARE_API_KEY
     labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik_proxy
-      ## HTTPS entrypoint
-      - traefik.http.routers.traefik.entrypoints=https
-      - traefik.http.routers.traefik.rule=Host(`traefik.$DOMAINNAME`)
-      - traefik.http.routers.traefik.tls.certresolver=cloudflare
-      ## Middlewares - Unique
-      - traefik.http.routers.traefik.middlewares=traefik-headers
-      - traefik.http.middlewares.traefik-headers.headers.SSLHost=traefik.$DOMAINNAME
-      ## Middlewares - Chain
-      - traefik.http.routers.traefik.middlewares=test-headers@file
-      ## Services
-      - traefik.http.routers.traefik.service=traefik
-      - traefik.http.services.traefik.loadbalancer.server.port=8080
-      ## TRAEFIK API
-        ### API Login: test/test ###
-        # https://docs.traefik.io/v2.0/operations/api/#endpoints
-      - traefik.http.routers.api.entrypoints=traefik
-      - traefik.http.routers.api.rule=PathPrefix(`/api`) || PathPrefix(`/dashboard`)
-      - traefik.http.routers.api.service=api@internal # API must be secured with auth
-      - traefik.http.routers.api.middlewares=basic_auth@file # auth needed to access api without insecure flag. Not working..
-#      - traefik.http.middlewares.basic_auth.basicauth.users=
-#      - traefik.http.middlewares.basic_auth.basicauth.usersfile=/etc/traefik/.htpasswd
-
-
-#      - traefik.http.routers.api.entrypoints=https
-#      - traefik.http.routers.api.rule=PathPrefix(`/api`) || PathPrefix(`/dashboard`)
-#      - traefik.http.routers.api.service=api@internal
-#      - traefik.http.services.api.loadbalancer.server.port=8080
-
-#      - traefik.tcp.routers.1traefik.entrypoints=https
-#      - traefik.tcp.routers.1traefik.tls=true
-#      - traefik.tcp.routers.1traefik.rule=HostSNI(`traefik.$DOMAINNAME`)
-#      - traefik.tcp.routers.1traefik.tls.certresolver=cloudflare
-#      - traefik.tcp.routers.1traefik.service=1traefik
-#      - traefik.tcp.services.1traefik.loadbalancer.server.port=8080
-
-#      - traefik.http.middlewares.https-only.redirectscheme.scheme=https
-#      - traefik.http.middlewares.test-auth.forwardauth.trustForwardHeader=true
-#      - traefik.http.middlewares.test-auth.forwardauth.Address=http://oauth:4181
-#      - traefik.http.middlewares.test-auth.forwardauth.authResponseHeaders=X-Forwarded-User, X-WebAuth-User
-#      - traefik.http.middlewares.secure-headers.headers.SSLRedirect=true
-#      - traefik.http.middlewares.secure-headers.headers.SSLForceHost=true
-#      - traefik.http.middlewares.secure-headers.headers.STSSeconds=315360000
-#      - traefik.http.middlewares.secure-headers.headers.STSIncludeSubDomains=true
-#      - traefik.http.middlewares.secure-headers.headers.STSPreload=true
-#      - traefik.http.middlewares.secure-headers.headers.ForceSTSHeader=true
-#      - traefik.http.middlewares.secure-headers.headers.FrameDeny=true
-#      - traefik.http.middlewares.secure-headers.headers.CustomFrameOptionsValue=SAMEORIGIN
-#      - traefik.http.middlewares.secure-headers.headers.ContentTypeNosniff=true
-#      - traefik.http.middlewares.secure-headers.headers.BrowserXssFilter=true
-#      - traefik.http.middlewares.secure-headers.headers.ContentSecurityPolicy=default-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'none';
-#      - traefik.http.middlewares.secure-headers.headers.ReferrerPolicy=same-origin
-#      - traefik.http.middlewares.secure-headers.headers.FeaturePolicy=camera 'none'; display-capture 'none'; geolocation 'none'; microphone 'none'; payment 'none'; usb 'none'; vr 'none';
-#      - traefik.http.middlewares.secure-headers.headers.customResponseHeaders.X-Robots-Tag=none,noarchive,nosnippet,notranslate,noimageindex,
-#      - traefik.http.middlewares.secure-headers.headers.customResponseHeaders.Set-Cookie=__Secure-sess=123; path=/; HttpOnly; Secure; SameSite=Lax;
-#      - "traefik.http.middlewares.testHeader.headers.allowedHosts=$DOMAINNAME"
-#      customFrameOptionsValue: 'allow-from https://${DOMAINNAME}'
-
-## Who Am I?? - Show Headers
-  # curl -H Host:whoami.localhost http://{HOST_IP}:80
-
-  whoami:
-    container_name: whoami
-    image: containous/whoami
-    networks:
-      - traefik_proxy
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik_proxy
-      - traefik.http.routers.whoami.entrypoints=http
-      - traefik.http.routers.whoami.rule=Host(`whoami.localhost`) # keep as .localhost (see curl command above)
-
-## Google OAuth - Limits access to only your Google account
-  # https://hub.docker.com/r/thomseddon/traefik-forward-auth
-  # https://console.developers.google.com/
-  # Follow directions at above link. My Google settings under the Credentials tab are:
-  # Credentials: Name can be anything (mine is Traefik) and Authorized redirect URLs:  	https://oauth.$DOMAINNAME/_oauth
-  # OAuth Concent Screen: Application Name is Traefik (think it can be anything). I entered my e-mail for support e-mail. Authorized Domains is $DOMAINNAME
-  # Domain Verification: $DOMAINNAME
-
-  oauth:
-    container_name: oauth
-    image: thomseddon/traefik-forward-auth
-    restart: always
-    networks:
-      - traefik_proxy
-    environment:
-      - PROVIDERS_GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
-      - PROVIDERS_GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
-      - SECRET=$OAUTH_SECRET
-      - COOKIE_DOMAIN=$DOMAINNAME
-      - INSECURE_COOKIE=false
-      - AUTH_HOST=oauth.$DOMAINNAME
-      - URL_PATH=/_oauth
-      - WHITELIST=$MY_EMAIL
-      - LOG_LEVEL=info
-      - LOG_FORMAT=text
-      - LIFETIME=2592000 # 30 days
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik_proxy
-      ## HTTPS entrypoint
-      - traefik.http.routers.oauth.entrypoints=https
-      - traefik.http.routers.oauth.rule=Host(`oauth.$DOMAINNAME`)
-      - traefik.http.routers.oauth.tls.certresolver=cloudflare
-      ## Middlewares - Unique
-      - traefik.http.routers.oauth.middlewares=oauth-headers
-      - traefik.http.middlewares.oauth-headers.headers.SSLHost=oauth.$DOMAINNAME
-      ## Middlewares - Chain
-      - traefik.http.routers.oauth.middlewares=secure-chain-nocookie@file
-      ## Services
-      - traefik.http.routers.oauth.service=oauth
-      - traefik.http.services.oauth.loadbalancer.server.port=4181
+      - "traefik.enable=true"
+      # HTTP-to-HTTPS Redirect
+      - "traefik.http.routers.http-catchall.entrypoints=http"
+      - "traefik.http.routers.http-catchall.rule=HostRegexp(`{host:.+}`)"
+      - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      # HTTP Routers
+      - "traefik.http.routers.traefik-rtr.entrypoints=https"
+      - "traefik.http.routers.traefik-rtr.rule=Host(`traefik.$DOMAINNAME`)"
+      - "traefik.http.routers.traefik-rtr.tls=true"
+      - "traefik.http.routers.traefik-rtr.tls.certresolver=dns-cloudflare"
+      - "traefik.http.routers.traefik-rtr.tls.domains[0].main=$DOMAINNAME"
+      - "traefik.http.routers.traefik-rtr.tls.domains[0].sans=*.$DOMAINNAME"
+      - "traefik.http.routers.traefik-rtr.tls.domains[1].main=$DOMAIN" # Pulls main cert for second domain
+      - "traefik.http.routers.traefik-rtr.tls.domains[1].sans=*.$DOMAIN" # Pulls wildcard cert for second domain
+      ## Middlewares
+      - "traefik.http.routers.traefik-rtr.middlewares=traefik-headers,rate-limit@file,oauth@file"
+      - "traefik.http.middlewares.traefik-headers.headers.accesscontrolallowmethods=GET, OPTIONS, PUT"
+      - "traefik.http.middlewares.traefik-headers.headers.accesscontrolalloworiginlist=https://$DOMAINNAME"
+      - "traefik.http.middlewares.traefik-headers.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.traefik-headers.headers.addvaryheader=true"
+      - "traefik.http.middlewares.traefik-headers.headers.allowedhosts=traefik.$DOMAINNAME"
+      - "traefik.http.middlewares.traefik-headers.headers.hostsproxyheaders=X-Forwarded-Host"
+      - "traefik.http.middlewares.traefik-headers.headers.sslredirect=true"
+      - "traefik.http.middlewares.traefik-headers.headers.sslhost=traefik.$DOMAINNAME"
+      - "traefik.http.middlewares.traefik-headers.headers.sslforcehost=true"
+      - "traefik.http.middlewares.traefik-headers.headers.sslproxyheaders.X-Forwarded-Proto=https"
+      - "traefik.http.middlewares.traefik-headers.headers.stsseconds=63072000"
+      - "traefik.http.middlewares.traefik-headers.headers.stsincludesubdomains=true"
+      - "traefik.http.middlewares.traefik-headers.headers.stspreload=true"
+      - "traefik.http.middlewares.traefik-headers.headers.forcestsheader=true"
+      - "traefik.http.middlewares.traefik-headers.headers.framedeny=true"
+#      - "traefik.http.middlewares.traefik-headers.headers.customframeoptionsvalue=SAMEORIGIN" # This option overrides FrameDeny
+      - "traefik.http.middlewares.traefik-headers.headers.contenttypenosniff=true"
+      - "traefik.http.middlewares.traefik-headers.headers.browserxssfilter=true"
+#      - "traefik.http.middlewares.traefik-headers.headers.contentsecuritypolicy=frame-ancestors 'none'; object-src 'none'; base-uri 'none';"
+      - "traefik.http.middlewares.traefik-headers.headers.referrerpolicy=same-origin"
+      - "traefik.http.middlewares.traefik-headers.headers.featurepolicy=camera 'none'; geolocation 'none'; microphone 'none'; payment 'none'; usb 'none'; vr 'none';"
+      - "traefik.http.middlewares.traefik-headers.headers.customresponseheaders.X-Robots-Tag=none,noarchive,nosnippet,notranslate,noimageindex,"
+      ## Services - API
+      - "traefik.http.routers.traefik-rtr.service=api@internal"
 
 networks:
   traefik_proxy:
-    external:
-      name: traefik_proxy
+    external: true

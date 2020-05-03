@@ -4,7 +4,7 @@ services:
 ## Handbrake - Video Converter
   handbrake:
     container_name: handbrake
-    image: jlesage/handbrake
+    image: jlesage/handbrake:latest
     restart: always
     networks:
       - traefik_proxy
@@ -21,28 +21,24 @@ services:
       - GROUP_ID=$PGID
       - TZ=$TZ
       - UMASK=002
-      - DISPLAY_WIDTH=1280
+      - DISPLAY_WIDTH=1600
       - DISPLAY_HEIGHT=768
 #      - AUTOMATED_CONVERSION_PRESET=H.265 MKV 480p30
       - AUTOMATED_CONVERSION_PRESET=H.265 MKV 1080p30
       - AUTOMATED_CONVERSION_FORMAT=mkv
     labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik_proxy
-      ## HTTPS entrypoint
-      - traefik.http.routers.handbrake.entrypoints=https
-      - traefik.http.routers.handbrake.rule=Host(`handbrake.$DOMAINNAME`)
-      - traefik.http.routers.handbrake.tls.certresolver=cloudflare
-      ## Middlewares - Unique
-      - traefik.http.routers.handbrake.middlewares=handbrake-headers
-      - traefik.http.middlewares.handbrake-headers.headers.SSLHost=handbrake.$DOMAINNAME
-      ## Middlewares - Chain
-      - traefik.http.routers.handbrake.middlewares=secure-chain@file
-      ## Services
-      - traefik.http.routers.handbrake.service=handbrake
-      - traefik.http.services.handbrake.loadbalancer.server.port=5800
+      - "traefik.enable=true"
+      ## HTTP Routers
+      - "traefik.http.routers.handbrake-rtr.entrypoints=https"
+      - "traefik.http.routers.handbrake-rtr.rule=Host(`handbrake.$DOMAINNAME`)"
+      - "traefik.http.routers.handbrake-rtr.tls=true"
+      - "traefik.http.routers.handbrake-rtr.tls.certresolver=dns-cloudflare"
+      ## Middlewares
+      - "traefik.http.routers.handbrake-rtr.middlewares=secure-chain@file"
+      ## HTTP Services
+      - "traefik.http.routers.handbrake-rtr.service=handbrake-svc"
+      - "traefik.http.services.handbrake-svc.loadbalancer.server.port=5800"
 
 networks:
   traefik_proxy:
-    external:
-      name: traefik_proxy
+    external: true

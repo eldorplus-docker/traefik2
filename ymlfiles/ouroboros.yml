@@ -6,23 +6,23 @@ services:
   # https://github.com/pyouroboros/ouroboros/wiki
   ouroboros:
     container_name: ouroboros
-    image: pyouroboros/ouroboros
+    image: pyouroboros/ouroboros:latest
     restart: always
     networks:
       - traefik_proxy
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
+      - TZ=$TZ
       - CLEANUP=true
-#      - INTERVAL=3600
       - CRON="0 4 * * *"
+#      - INTERVAL=3600 # Comment out if using Cron
+#      - RUN_ONCE=true # Default false
       - LOG_LEVEL=info
       - SELF_UPDATE=true
-      - LATEST=true
-      - IGNORE=mongo influxdb postgres mariadb
-      - TZ=$TZ
+#      - IGNORE=mongo influxdb postgres mariadb
+      - NOTIFIERS=$SLACK_NOTIFY # Slack Webhook URL
 
 networks:
   traefik_proxy:
-    external:
-      name: traefik_proxy
+    external: true

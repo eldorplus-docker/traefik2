@@ -1,150 +1,39 @@
-# https://www.keycloak.org/documentation.html
-# https://www.keycloak.org/docs/latest/getting_started/index.html
-# https://hub.docker.com/_/postgres
-# https://hub.docker.com/r/jboss/keycloak/
-
-# Need to start the traefik network before running:
-  # docker network create traefik_proxy
-# Trail logs using (docker logs -f traefik). Change "traefik" to name of container you want to trail
-
 version: "3.7"
 services:
 
-## Traefik - Reverse Proxy
-  traefik:
-    container_name: traefik
-    image: traefik:v2.0.0-rc4
-    restart: always
-    networks:
-      - traefik_proxy
-    ports:
-      # https://www.reddit.com/r/docker/comments/c1wrep/traefik_reverse_proxy_question_docker_overlay/
-      - target: 80
-        published: 80
-        protocol: tcp
-        mode: host
-      - target: 443
-        published: 443
-        protocol: tcp
-        mode: host
-#      - "8080:8080"
-    volumes:
-      - $TRAEFIK2DIR/traefik:/etc/traefik
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      - CF_API_EMAIL=$CLOUDFLARE_EMAIL
-      - CF_API_KEY=$CLOUDFLARE_API_KEY
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik_proxy
-      ## HTTPS entrypoint
-      - traefik.http.routers.traefik.entrypoints=https
-      - traefik.http.routers.traefik.rule=Host(`traefik.$DOMAINNAME`)
-      - traefik.http.routers.traefik.tls.certresolver=cloudflare
-      ## Middlewares - Unique
-      - traefik.http.routers.traefik.middlewares=traefik-headers
-      - traefik.http.middlewares.traefik-headers.headers.SSLHost=traefik.$DOMAINNAME
-      ## Middlewares - Chain
-      - traefik.http.routers.traefik.middlewares=secure-chain-nocookie@file
-      ## Services
-      - traefik.http.routers.traefik.service=traefik
-      - traefik.http.services.traefik.loadbalancer.server.port=8080
-      ## TRAEFIK API
-#      - traefik.http.routers.api.entrypoints=traefik
-      - traefik.http.routers.api.rule=PathPrefix(`/api`) || PathPrefix(`/dashboard`)
-      - traefik.http.routers.api.service=api@internal # API must be secured with auth
-      - traefik.http.routers.api.middlewares=secure-chain-nocookie@file
+## Forward Authentication for Traefik
+#  oauth:
+#    container_name: oauth
+##    image: thomseddon/traefik-forward-auth # thomseddeon's image doesnt support OIDC_ISSUER yet
+#    image: funkypenguin/traefik-forward-auth:latest
+#    restart: always
+#    networks:
+#      - traefik_proxy
+#    depends_on:
+#      - keycloak
+#    environment:
+#      - CLIENT_ID=$AUTH_CLIENT_ID
+#      - CLIENT_SECRET=$AUTH_CLIENT_SECRET
+#      - SECRET=$AUTH_SECRET
+#      - OIDC_ISSUER=https://keycloak.$DOMAINNAME/auth/realms/$KEYCLOAK_REALM
+#      - AUTH_HOST=oauth.$DOMAINNAME
+#      - COOKIE_DOMAIN=$DOMAINNAME
+#      - COOKIE_SECURE=true
+#      - LIFETIME=2592000 # 30 days
+#    labels:
+#      - "traefik.enable=true"
+#      ## HTTP Routers
+#      - "traefik.http.routers.oauth-rtr.entrypoints=https"
+#      - "traefik.http.routers.oauth-rtr.rule=Host(`oauth.$DOMAINNAME`)"
+#      - "traefik.http.routers.oauth-rtr.tls=true"
+#      - "traefik.http.routers.oauth-rtr.tls.certresolver=dns-cloudflare"
+#      ## Middlewares
+#      - "traefik.http.routers.oauth-rtr.middlewares=secure-chain@file,rate-limit@file"
+#      ## HTTP Services
+#      - "traefik.http.routers.oauth-rtr.service=oauth-svc"
+#      - "traefik.http.services.oauth-svc.loadbalancer.server.port=4181"
 
-
-
-#      - traefik.http.routers.api.entrypoints=https
-#      - traefik.http.routers.api.rule=PathPrefix(`/api`) || PathPrefix(`/dashboard`)
-#      - traefik.http.routers.api.service=api@internal
-#      - traefik.http.services.api.loadbalancer.server.port=8080
-
-#      - traefik.tcp.routers.1traefik.entrypoints=https
-#      - traefik.tcp.routers.1traefik.tls=true
-#      - traefik.tcp.routers.1traefik.rule=HostSNI(`traefik.$DOMAINNAME`)
-#      - traefik.tcp.routers.1traefik.tls.certresolver=cloudflare
-#      - traefik.tcp.routers.1traefik.service=1traefik
-#      - traefik.tcp.services.1traefik.loadbalancer.server.port=8080
-
-#      - traefik.http.middlewares.https-only.redirectscheme.scheme=https
-#      - traefik.http.middlewares.test-auth.forwardauth.trustForwardHeader=true
-#      - traefik.http.middlewares.test-auth.forwardauth.Address=http://oauth:4181
-#      - traefik.http.middlewares.test-auth.forwardauth.authResponseHeaders=X-Forwarded-User, X-WebAuth-User
-#      - traefik.http.middlewares.secure-headers.headers.SSLRedirect=true
-#      - traefik.http.middlewares.secure-headers.headers.SSLForceHost=true
-#      - traefik.http.middlewares.secure-headers.headers.STSSeconds=315360000
-#      - traefik.http.middlewares.secure-headers.headers.STSIncludeSubDomains=true
-#      - traefik.http.middlewares.secure-headers.headers.STSPreload=true
-#      - traefik.http.middlewares.secure-headers.headers.ForceSTSHeader=true
-#      - traefik.http.middlewares.secure-headers.headers.FrameDeny=true
-#      - traefik.http.middlewares.secure-headers.headers.CustomFrameOptionsValue=SAMEORIGIN
-#      - traefik.http.middlewares.secure-headers.headers.ContentTypeNosniff=true
-#      - traefik.http.middlewares.secure-headers.headers.BrowserXssFilter=true
-#      - traefik.http.middlewares.secure-headers.headers.ContentSecurityPolicy=default-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'none';
-#      - traefik.http.middlewares.secure-headers.headers.ReferrerPolicy=same-origin
-#      - traefik.http.middlewares.secure-headers.headers.FeaturePolicy=camera 'none'; display-capture 'none'; geolocation 'none'; microphone 'none'; payment 'none'; usb 'none'; vr 'none';
-#      - traefik.http.middlewares.secure-headers.headers.customResponseHeaders.X-Robots-Tag=none,noarchive,nosnippet,notranslate,noimageindex,
-#      - traefik.http.middlewares.secure-headers.headers.customResponseHeaders.Set-Cookie=__Secure-sess=123; path=/; HttpOnly; Secure; SameSite=Lax;
-#      - "traefik.http.middlewares.testHeader.headers.allowedHosts=$DOMAINNAME"
-#      customFrameOptionsValue: 'allow-from https://${DOMAINNAME}'
-
-## Who Am I?? - Show Headers
-  # curl -H Host:whoami.localhost http://{HOST_IP}:80
-
-  whoami:
-    container_name: whoami
-    image: containous/whoami
-    networks:
-      - traefik_proxy
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik_proxy
-      - traefik.http.routers.whoami.entrypoints=http
-      - traefik.http.routers.whoami.rule=Host(`whoami.localhost`) # keep as .localhost (see curl command above)
-
-## Traefik Forward Auth - Auth Gate for SSO
-
-  oauth:
-    container_name: oauth
-#    image: thomseddon/traefik-forward-auth # thomseddeon's image doesnt support OIDC_ISSUER yet
-    image: funkypenguin/traefik-forward-auth
-    restart: always
-    networks:
-      - traefik_proxy
-    depends_on:
-      - keycloak
-    environment:
-      - CLIENT_ID=$AUTH_CLIENT_ID
-      - CLIENT_SECRET=$AUTH_CLIENT_SECRET
-      ## This is based on using the Master realm. Create a new client, this will go into your CLIENT_ID, CLIENT_SECRET details.
-      - OIDC_ISSUER=https://keycloak.$DOMAINNAME/auth/realms/master
-      - SECRET=$AUTH_SECRET
-      - AUTH_HOST=oauth.$DOMAINNAME
-      - COOKIE_DOMAIN=$DOMAINNAME
-      - COOKIE_SECURE=true
-#      - URL_PATH=_oauth
-#      - WHITELIST=$MY_EMAIL
-#      - LOG_LEVEL=info
-#      - LOG_FORMAT=text
-      - LIFETIME=2592000 # 30 days
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik_proxy
-      ## HTTPS entrypoint
-      - traefik.http.routers.oauth.entrypoints=https
-      - traefik.http.routers.oauth.rule=Host(`oauth.$DOMAINNAME`)
-      - traefik.http.routers.oauth.tls.certresolver=cloudflare
-      ## Middlewares - Unique
-      - traefik.http.routers.oauth.middlewares=oauth-headers
-      - traefik.http.middlewares.oauth-headers.headers.SSLHost=oauth.$DOMAINNAME
-      ## Middlewares - Chain
-      - traefik.http.routers.oauth.middlewares=secure-chain@file
-      ## Services
-      - traefik.http.routers.oauth.service=oauth
-      - traefik.http.services.oauth.loadbalancer.server.port=4181
+## Keycloak - Private Authentication
 
   ## To fix net.core.*mem issues add these to the bottom of /etc/sysctl.conf
   ## https://forums.docker.com/t/how-to-tune-kernel-properties-in-docker-images/25291
@@ -163,7 +52,7 @@ services:
   ## Change the <password>
     # docker exec -it mariadb mysql -uroot -p$MYSQL_ROOT_PASSWORD
     # CREATE DATABASE keycloak CHARACTER SET = utf8 COLLATE = utf8_unicode_ci;
-    # GRANT ALL PRIVILEGES ON keycloak.* TO 'keycloak'@'keycloak.traefik_proxy' IDENTIFIED BY '<password>';
+    # GRANT ALL PRIVILEGES ON keycloak.* TO 'keycloak'@'keycloak.mariadb' IDENTIFIED BY '<password>';
     # FLUSH PRIVILEGES;
     # exit
 
@@ -172,15 +61,15 @@ services:
 
   keycloak:
     container_name: keycloak
-    image: jboss/keycloak
+    image: jboss/keycloak:latest
     restart: always
-    depends_on:
-      - traefik
     networks:
       - traefik_proxy
+      - mariadb
 #    ports:
 #      - "8080:8080"
     volumes:
+      - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     environment:
       - PUID=$PUID
@@ -196,22 +85,20 @@ services:
       - KEYCLOAK_HOSTNAME=keycloak.$DOMAINNAME
 #      - JDBC_PARAMS=connectTimeout=30000
     labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik_proxy
-      ## HTTPS entrypoint
-      - traefik.http.routers.keycloak-rtr.entrypoints=https
-      - traefik.http.routers.keycloak-rtr.rule=Host(`keycloak.$DOMAINNAME`)
-      - traefik.http.routers.keycloak-rtr.tls.certresolver=cloudflare
-      ## Middlewares - Unique
-      - traefik.http.routers.keycloak-rtr.middlewares=keycloak-headers
-      - traefik.http.middlewares.keycloak-headers.headers.SSLHost=keycloak.$DOMAINNAME
-      ## Middlewares - Chain
-      - traefik.http.routers.keycloak-rtr.middlewares=noauth-chain-nocookie@file
-      ## Services
-      - traefik.http.routers.keycloak-rtr.service=keycloak-svc
-      - traefik.http.services.keycloak-svc.loadbalancer.server.port=8080
+      - "traefik.enable=true"
+      ## HTTP Routers
+      - "traefik.http.routers.keycloak-rtr.entrypoints=https"
+      - "traefik.http.routers.keycloak-rtr.rule=Host(`keycloak.$DOMAINNAME`)"
+      - "traefik.http.routers.keycloak-rtr.tls=true"
+      - "traefik.http.routers.keycloak-rtr.tls.certresolver=dns-cloudflare"
+      ## Middlewares
+      - "traefik.http.routers.keycloak-rtr.middlewares=secure-chain@file"
+      ## HTTP Services
+      - "traefik.http.routers.keycloak-rtr.service=keycloak-svc"
+      - "traefik.http.services.keycloak-svc.loadbalancer.server.port=8080"
 
 networks:
   traefik_proxy:
-    external:
-      name: traefik_proxy
+    external: true
+  mariadb:
+    external: true
