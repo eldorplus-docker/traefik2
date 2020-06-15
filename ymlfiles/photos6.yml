@@ -20,23 +20,23 @@ services:
       - mariadb
 #    ports:
 #    - "80:80"
+    security_opt:
+      - no-new-privileges:true
     volumes:
-      - ${USERDIR}/pics:/photos
-#      - ${USERDIR}/Pictures:/photos
-      - ${USERDIR}/docker/photos/config6:/config
+      - $USERDIR/pics:/photos
+#      - $USERDIR/Pictures:/photos
+      - $USERDIR/docker/photos/config6:/config
     environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
+      - PUID=$PUID
+      - PGID=$PGID
+      - TZ=$TZ
     labels:
       - "traefik.enable=true"
       ## HTTP Routers
       - "traefik.http.routers.photos-rtr.entrypoints=https"
       - "traefik.http.routers.photos-rtr.rule=Host(`photos.$DOMAINNAME`)"
-      - "traefik.http.routers.photos-rtr.tls=true"
-      - "traefik.http.routers.photos-rtr.tls.certresolver=dns-cloudflare"
       ## Middlewares
-      - "traefik.http.routers.photos-rtr.middlewares=oauth@file"
+      - "traefik.http.routers.photos-rtr.middlewares=authelia@file"
       ## HTTP Services
       - "traefik.http.routers.photos-rtr.service=photos-svc"
       - "traefik.http.services.photos-svc.loadbalancer.server.port=80"
